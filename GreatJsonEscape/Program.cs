@@ -9,7 +9,6 @@ namespace GreatJsonEscape
     class Program
     {
         private const string Terminator = "__END";
-
         static int Main(string[] args)
         {
             string? input = null;
@@ -142,7 +141,6 @@ namespace GreatJsonEscape
 
             return sb.ToString();
         }
-
         private static bool LooksLikeJsonDocument(string s)
         {
             // Fast heuristic: trims outer whitespace and checks for starting brace/bracket.
@@ -150,7 +148,6 @@ namespace GreatJsonEscape
             s = s.TrimStart();
             return s.StartsWith($"{{") || s.StartsWith($"[");
         }
-
         private static string EnsureQuoted(string input)
         {
             var candidate = input.Trim();
@@ -160,6 +157,17 @@ namespace GreatJsonEscape
         }
         
         // ===== Core transformation =====
+        /// <summary>
+        /// Transformation logic:
+        ///   1. Normalize input
+        ///   2. Detect JSON vs string
+        ///   3. Decode string if needed
+        ///   4. Expand embedded JSON
+        ///   5. Serialize
+        /// </summary>
+        /// <param name="root"></param>
+        /// <param name="compact"></param>
+        /// <returns></returns>
         private static string TransformAndSerialize(JsonElement root, bool compact)
         {
             var sb = new ArrayBufferWriter<byte>();
