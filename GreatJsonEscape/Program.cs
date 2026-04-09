@@ -8,16 +8,16 @@ namespace GreatJsonEscape
 {
     class Program
     {
-        private const string Terminator = "__END__";
+        private const string Terminator = "__END";
 
         static int Main(string[] args)
         {
             string? input = null;
             string? outPath = null;
-            bool compact = false;
+            var compact = false;
 
             // Simple args parse: --file <path>  --out <path>  --compact
-            for (int i = 0; i < args.Length; i++)
+            for (var i = 0; i < args.Length; i++)
             {
                 switch (args[i])
                 {
@@ -85,8 +85,8 @@ namespace GreatJsonEscape
                 {
                     // Path B: Input is a JSON string literal or raw escaped string
                     // Normalize to a JSON string literal and decode it.
-                    string jsonStringLiteral = EnsureQuoted(input);
-                    string decoded = JsonSerializer.Deserialize<string>(jsonStringLiteral)!;
+                    var jsonStringLiteral = EnsureQuoted(input);
+                    var decoded = JsonSerializer.Deserialize<string>(jsonStringLiteral)!;
 
                     // If the decoded content is JSON, parse & transform, else output the decoded text as is.
                     if (LooksLikeJsonDocument(decoded))
@@ -123,8 +123,7 @@ namespace GreatJsonEscape
             }
         }
 
-        // ===== Helpers =====
-
+        // ===== High-level helpers =====
         private static string ReadInteractiveMultiline()
         {
             Console.WriteLine("Paste your JSON (supports multiple lines).");
@@ -149,17 +148,18 @@ namespace GreatJsonEscape
             // Fast heuristic: trims outer whitespace and checks for starting brace/bracket.
             if (string.IsNullOrWhiteSpace(s)) return false;
             s = s.TrimStart();
-            return s.StartsWith("{") || s.StartsWith("[");
+            return s.StartsWith($"{{") || s.StartsWith($"[");
         }
 
         private static string EnsureQuoted(string input)
         {
-            string candidate = input.Trim();
-            if (candidate.Length >= 2 && candidate[0] == '"' && candidate[^1] == '"')
+            var candidate = input.Trim();
+            if (candidate is ['"', _, ..] && candidate[^1] == '"')
                 return candidate;
             return $"\"{candidate}\"";
         }
-
+        
+        // ===== Core transformation =====
         private static string TransformAndSerialize(JsonElement root, bool compact)
         {
             var sb = new ArrayBufferWriter<byte>();
@@ -173,7 +173,6 @@ namespace GreatJsonEscape
             writer.Flush();
             return Encoding.UTF8.GetString(sb.WrittenSpan);
         }
-
         /// <summary>
         /// Recursively writes a JsonElement, but whenever it encounters a string that is itself valid JSON,
         /// it parses that string and writes the parsed JSON inline (recursively).
@@ -187,24 +186,7 @@ namespace GreatJsonEscape
                     foreach (var prop in element.EnumerateObject())
                     {
                         writer.WritePropertyName(prop.Name);
-                        if (prop.Value.ValueKind == JsonValueKind.String)
-                        {
-                            if (TryParseEmbeddedJson(prop.Value.GetString(), out var embedded))
-                            {
-                                using (embedded)
-                                {
-                                    WriteTransformed(embedded.RootElement, writer);
-                                }
-                            }
-                            else
-                            {
-                                writer.WriteStringValue(prop.Value.GetString());
-                            }
-                        }
-                        else
-                        {
-                            WriteTransformed(prop.Value, writer);
-                        }
+                        WriteAnyValue(prop.Value, writer);
                     }
                     writer.WriteEndObject();
                     break;
@@ -213,49 +195,16 @@ namespace GreatJsonEscape
                     writer.WriteStartArray();
                     foreach (var item in element.EnumerateArray())
                     {
-                        if (item.ValueKind == JsonValueKind.String)
-                        {
-                            if (TryParseEmbeddedJson(item.GetString(), out var embedded))
-                            {
-                                using (embedded)
-                                {
-                                    WriteTransformed(embedded.RootElement, writer);
-                                }
-                            }
-                            else
-                            {
-                                writer.WriteStringValue(item.GetString());
-                            }
-                        }
-                        else
-                        {
-                            WriteTransformed(item, writer);
-                        }
+                        WriteAnyValue(item, writer);
                     }
                     writer.WriteEndArray();
                     break;
 
                 case JsonValueKind.String:
-                    {
-                        var s = element.GetString();
-                        if (TryParseEmbeddedJson(s, out var embedded))
-                        {
-                            using (embedded)
-                            {
-                                WriteTransformed(embedded.RootElement, writer);
-                            }
-                        }
-                        else
-                        {
-                            writer.WriteStringValue(s);
-                        }
-                        break;
-                    }
-
-                case JsonValueKind.Number:
-                    writer.WriteRawValue(element.GetRawText());
+                    WriteAnyValue(element, writer);
                     break;
 
+                case JsonValueKind.Number:
                 case JsonValueKind.True:
                 case JsonValueKind.False:
                     writer.WriteRawValue(element.GetRawText());
@@ -266,12 +215,42 @@ namespace GreatJsonEscape
                     break;
 
                 default:
-                    // Fallback to raw (covers Undefined)
                     writer.WriteRawValue(element.GetRawText());
                     break;
             }
         }
+        /// <summary>
+        /// Centralizes the logic for detecting and expanding embedded JSON strings, keeping that concern out of the structural traversal code.
+        ///     If value is a string, parse as embedded JSON object or array.
+        ///     If value is not a string, delegate back to WriteTransformed.
+        /// </summary>
+        /// <param name="element"></param>
+        /// <param name="writer"></param>
+        private static void WriteAnyValue(JsonElement element, Utf8JsonWriter writer)
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                var s = element.GetString();
 
+                if (TryParseEmbeddedJson(s, out var embedded))
+                {
+                    using (embedded)
+                    {
+                        WriteTransformed(embedded.RootElement, writer);
+                    }
+                }
+                else
+                {
+                    writer.WriteStringValue(s);
+                }
+
+                return;
+            }
+
+            WriteTransformed(element, writer);
+        }
+
+        // ===== Parsing helpers =====
         /// <summary>
         /// Attempts to parse a string as JSON (object or array).
         /// Returns true if successful and outputs a JsonDocument.
@@ -283,7 +262,7 @@ namespace GreatJsonEscape
 
             // Quick check to avoid throwing for obvious non-JSON strings
             var trimmed = s.TrimStart();
-            if (!(trimmed.StartsWith("{") || trimmed.StartsWith("[")))
+            if (!(trimmed.StartsWith($"{{") || trimmed.StartsWith($"[")))
                 return false;
 
             try
@@ -298,17 +277,13 @@ namespace GreatJsonEscape
         }
     }
 
-    // Minimal ArrayBufferWriter used for buffering Utf8JsonWriter output without external packages
-    internal sealed class ArrayBufferWriter<T> : IBufferWriter<T>
-    {
-        private T[] _buffer;
-        private int _index;
+    // ===== Utilities =====
 
-        public ArrayBufferWriter(int initialCapacity = 256)
-        {
-            _buffer = new T[initialCapacity];
-            _index = 0;
-        }
+    // Minimal ArrayBufferWriter used for buffering Utf8JsonWriter output without external packages
+    internal sealed class ArrayBufferWriter<T>(int initialCapacity = 256) : IBufferWriter<T>
+    {
+        private T[] _buffer = new T[initialCapacity];
+        private int _index = 0;
 
         public ReadOnlyMemory<T> WrittenMemory => new ReadOnlyMemory<T>(_buffer, 0, _index);
         public ReadOnlySpan<T> WrittenSpan => new ReadOnlySpan<T>(_buffer, 0, _index);
@@ -332,7 +307,7 @@ namespace GreatJsonEscape
             if (sizeHint == 0) sizeHint = 256;
             if (_buffer.Length - _index >= sizeHint) return;
 
-            int newSize = Math.Max(_buffer.Length * 2, _index + sizeHint);
+            var newSize = Math.Max(_buffer.Length * 2, _index + sizeHint);
             Array.Resize(ref _buffer, newSize);
         }
     }
