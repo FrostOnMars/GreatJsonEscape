@@ -52,7 +52,7 @@ internal static class JsonWriterFacade
                 if (expander.TryExpand(s, out var embedded))
                     using (embedded)
                     {
-                        WriteValue(embedded.RootElement, writer, expander);
+                        if (embedded != null) WriteValue(embedded.RootElement, writer, expander);
                     }
                 else
                     writer.WriteStringValue(s);

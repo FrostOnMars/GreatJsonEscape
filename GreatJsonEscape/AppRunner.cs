@@ -17,6 +17,7 @@ internal sealed class AppRunner
         if (string.IsNullOrWhiteSpace(input))
         {
             Console.Error.WriteLine("No input provided.");
+            WaitForKeyIfInteractive();
             return 1;
         }
 
@@ -29,13 +30,22 @@ internal sealed class AppRunner
                 File.WriteAllText(options.OutputPath, output);
             else
                 Console.WriteLine(output);
-
+            WaitForKeyIfInteractive();
             return 0;
         }
         catch (JsonException jx)
         {
             Console.Error.WriteLine("JSON parsing error: " + jx.Message);
             return 2;
+        }
+    }
+    private static void WaitForKeyIfInteractive()
+    {
+        // Only wait if not being piped/redirected (interactive mode)
+        if (!Console.IsInputRedirected && !Console.IsOutputRedirected)
+        {
+            Console.WriteLine("\nPress any key to exit...");
+            Console.ReadKey(true);
         }
     }
 }
