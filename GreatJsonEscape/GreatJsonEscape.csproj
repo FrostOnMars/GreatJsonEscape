@@ -7,4 +7,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+
+  <ItemGroup>
+    <None Include="Input\OtherInputProviders.cs" />
+  </ItemGroup>
+
 </Project>
