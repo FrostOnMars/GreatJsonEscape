@@ -13,4 +13,8 @@
     <EmbeddedResource Include="Resource\HesGettingAway.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Input\" />
+  </ItemGroup>
+
 </Project>
