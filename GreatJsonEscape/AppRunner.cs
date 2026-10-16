@@ -5,21 +5,36 @@ using GreatJsonEscape.Processing;
 
 namespace GreatJsonEscape;
 
-internal sealed class AppRunner
+internal static class AppRunner
 {
     public static int Run(string[] args)
     {
-        var options = AppOptions.Parse(args);
+        AppOptions options;
+        try
+        {
+            options = AppOptions.Parse(args);
+        }
+        catch (ArgumentException ax)
+        {
+            return Fail(ax.Message, 1);
+        }
 
-        var inputProvider = InputProviderFactory.Create(options);
-        var input = inputProvider.Read();
+        string input;
+        try
+        {
+            input = InputProviderFactory.Create(options).Read();
+        }
+        catch (IOException ioEx)
+        {
+            return Fail("Could not read input: " + ioEx.Message, 1);
+        }
+        catch (UnauthorizedAccessException uaEx)
+        {
+            return Fail("Could not read input: " + uaEx.Message, 1);
+        }
 
         if (string.IsNullOrWhiteSpace(input))
-        {
-            Console.Error.WriteLine("No input provided.");
-            WaitForKeyIfInteractive();
-            return 1;
-        }
+            return Fail("No input provided.", 1);
 
         try
         {
@@ -30,22 +45,34 @@ internal sealed class AppRunner
                 File.WriteAllText(options.OutputPath, output);
             else
                 Console.WriteLine(output);
+
             WaitForKeyIfInteractive();
             return 0;
         }
         catch (JsonException jx)
         {
-            Console.Error.WriteLine("JSON parsing error: " + jx.Message);
-            return 2;
+            return Fail("JSON parsing error: " + jx.Message, 2);
+        }
+        catch (IOException ioEx)
+        {
+            return Fail("Could not write output: " + ioEx.Message, 2);
         }
     }
+
+    private static int Fail(string message, int exitCode)
+    {
+        Console.Error.WriteLine(message);
+        WaitForKeyIfInteractive();
+        return exitCode;
+    }
+
     private static void WaitForKeyIfInteractive()
     {
         // Only wait if not being piped/redirected (interactive mode)
-        if (!Console.IsInputRedirected && !Console.IsOutputRedirected)
-        {
-            Console.WriteLine("\nPress any key to exit...");
-            Console.ReadKey(true);
-        }
+        if (Console.IsInputRedirected || Console.IsOutputRedirected)
+            return;
+
+        Console.WriteLine("\nPress any key to exit...");
+        Console.ReadKey(true);
     }
 }

@@ -6,6 +6,9 @@ internal static class InputProviderFactory
 {
     public static IInputProvider Create(AppOptions options)
     {
+        if (options.InputPath != null)
+            return new FileInputProvider(options.InputPath);
+
         if (options.Input != null)
             return new FixedInputProvider(options.Input);
 

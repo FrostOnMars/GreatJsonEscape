@@ -16,3 +16,11 @@ internal sealed class RedirectedInputProvider : IInputProvider
         return reader.ReadToEnd();
     }
 }
+
+internal sealed class FileInputProvider(string path) : IInputProvider
+{
+    public string Read()
+    {
+        return File.ReadAllText(path);
+    }
+}

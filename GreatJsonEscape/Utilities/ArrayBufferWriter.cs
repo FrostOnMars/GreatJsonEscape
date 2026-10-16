@@ -13,6 +13,11 @@ internal sealed class ArrayBufferWriter<T>(int initialCapacity = 256) : IBufferW
 
     public void Advance(int count)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+
+        if (_index > _buffer.Length - count)
+            throw new InvalidOperationException("Cannot advance past the end of the buffer.");
+
         _index += count;
     }
 
