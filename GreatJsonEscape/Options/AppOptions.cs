@@ -2,6 +2,7 @@
 
 internal sealed record AppOptions(
     string? Input,
+    string? InputPath,
     string? OutputPath,
     bool Compact
 )
@@ -9,6 +10,7 @@ internal sealed record AppOptions(
     public static AppOptions Parse(string[] args)
     {
         string? input = null;
+        string? inputPath = null;
         string? output = null;
         var compact = false;
 
@@ -17,12 +19,12 @@ internal sealed record AppOptions(
             {
                 case "--file":
                 case "-f":
-                    input = File.ReadAllText(args[++i]);
+                    inputPath = NextValue(args, ref i, args[i]);
                     break;
 
                 case "--out":
                 case "-o":
-                    output = args[++i];
+                    output = NextValue(args, ref i, args[i]);
                     break;
 
                 case "--compact":
@@ -30,10 +32,24 @@ internal sealed record AppOptions(
                     break;
 
                 default:
-                    input = input == null ? args[i] : input + " " + args[i];
+                    if (args[i].StartsWith('-'))
+                        throw new ArgumentException($"Unknown option: {args[i]}");
+
+                    if (input != null)
+                        throw new ArgumentException("Only one input value may be supplied.");
+
+                    input = args[i];
                     break;
             }
 
-        return new AppOptions(input, output, compact);
+        return new AppOptions(input, inputPath, output, compact);
+    }
+
+    private static string NextValue(string[] args, ref int i, string optionName)
+    {
+        if (i + 1 >= args.Length)
+            throw new ArgumentException($"Option '{optionName}' requires a value.");
+
+        return args[++i];
     }
 }

@@ -19,7 +19,7 @@ internal sealed class EmbeddedJsonExpander
             document = JsonDocument.Parse(value);
             return true;
         }
-        catch
+        catch (JsonException)
         {
             return false;
         }
